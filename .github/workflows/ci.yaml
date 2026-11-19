@@ -1,0 +1,119 @@
+# CI for System Design Lab. This repo only builds and tests; it never touches the cluster.
+#
+#   check    (every push and PR)  lint → type-check + build → build both images → smoke test
+#   publish  (main only)          push both images to GHCR → bump their tags in the deploy repo
+#
+# Deployment happens elsewhere: Argo CD watches Lutch21/system-design-lab-deploy and makes the
+# cluster match it. The only link between the two repos is the image-tag commit at the end.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WEB_IMAGE: ghcr.io/lutch21/system-design-lab-web
+  TUTOR_IMAGE: ghcr.io/lutch21/system-design-lab-tutor
+  DEPLOY_REPO: Lutch21/system-design-lab-deploy
+  DEPLOY_KUSTOMIZATION: apps/system-design-lab/overlays/local/kustomization.yaml
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check and build
+        run: npm run build
+
+      - name: Build images
+        run: |
+          docker build -f Dockerfile.web -t web:test .
+          docker build -f Dockerfile.tutor -t tutor:test .
+
+      - name: Smoke test (both containers together, no API key)
+        run: sh scripts/smoke-test.sh web:test tutor:test
+
+  publish:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      # Two architectures: amd64 for typical servers, arm64 for kind on Apple Silicon.
+      # Tagged with the commit SHA, so every deployed version traces back to exact code.
+      - name: Build and push images
+        run: |
+          for app in web tutor; do
+            if [ "$app" = web ]; then image=$WEB_IMAGE; else image=$TUTOR_IMAGE; fi
+            docker buildx build --platform linux/amd64,linux/arm64 \
+              -f "Dockerfile.$app" \
+              --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+              --tag "$image:$GITHUB_SHA" --push .
+          done
+
+      # The built-in GITHUB_TOKEN can't write to another repo, so this uses a deploy key:
+      # an SSH key with write access to the deploy repo only (secret DEPLOY_REPO_KEY).
+      - name: Check out the deploy repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DEPLOY_REPO }}
+          ssh-key: ${{ secrets.DEPLOY_REPO_KEY }}
+          path: deploy
+
+      - name: Bump image tags in the deploy repo
+        run: |
+          # Don't deploy an outdated build if main moved on while this one ran.
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "main advanced; the newer run will deploy."
+            exit 0
+          fi
+
+          cd deploy
+          # yq edits YAML safely (it's preinstalled on GitHub runners).
+          TAG=$GITHUB_SHA yq -i '
+            (.images[] | select(.name == strenv(WEB_IMAGE))).newTag = strenv(TAG) |
+            (.images[] | select(.name == strenv(TUTOR_IMAGE))).newTag = strenv(TAG)
+          ' "$DEPLOY_KUSTOMIZATION"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$DEPLOY_KUSTOMIZATION"
+          if git diff --cached --quiet; then echo "Tags already current."; exit 0; fi
+          git commit -m "Deploy system-design-lab ${GITHUB_SHA::7}" \
+            -m "Source: https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA"
+          git push origin HEAD:main

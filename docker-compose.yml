@@ -1,0 +1,28 @@
+# Local infrastructure for System Design Lab.
+#
+# Vault stores the tutor's ANTHROPIC_API_KEY so it doesn't have to sit in .env.
+# Don't start this directly the first time: run `npm run vault:start`, which also initialises
+# and unseals Vault (see scripts/vault.sh).
+services:
+  vault:
+    # Pinned version: a new release can't change behaviour under you.
+    image: hashicorp/vault:1.21.2
+    # A fixed name, so pods in the local kind cluster can reach it at
+    # http://system-design-lab-vault:8200 (vault.sh attaches it to the "kind" Docker network).
+    container_name: system-design-lab-vault
+    # `server` (not `server -dev`): dev mode keeps everything in memory, so secrets would vanish
+    # every time the container restarts. This uses real file storage on a Docker volume instead.
+    command: server
+    ports:
+      - "127.0.0.1:8200:8200" # only reachable from this machine
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200 # where the vault CLI inside the container connects
+    volumes:
+      - ./vault/config.hcl:/vault/config/config.hcl:ro
+      - vault-data:/vault/file
+    cap_add:
+      - IPC_LOCK # lets Vault keep secrets out of swap
+    restart: unless-stopped
+
+volumes:
+  vault-data:

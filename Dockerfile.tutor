@@ -1,0 +1,17 @@
+# The tutor API: the Node server in server/tutor.ts.
+#
+# Node 24 runs TypeScript files directly by stripping the types, so no build step or tsx is
+# needed. (This works because tsconfig.node.json sets erasableSyntaxOnly: only plain type
+# annotations, nothing that needs compiling.)
+FROM node:24-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+# Production dependencies only: no Vite, TypeScript or linters in the image.
+RUN npm ci --omit=dev && npm cache clean --force
+COPY server ./server
+# Run as the unprivileged "node" user that the image provides, not as root.
+USER node
+EXPOSE 8787
+# The API key arrives as the ANTHROPIC_API_KEY environment variable (from a Kubernetes Secret).
+CMD ["node", "server/tutor.ts"]

@@ -1,0 +1,119 @@
+@import 'tailwindcss';
+
+/* `dark:` utilities follow our theme switch (data-theme on <html>). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* Design tokens. Components use these through Tailwind classes like bg-surface, text-muted. */
+:root {
+  --bg: #f5efe6;
+  --surface: #fffcf7;
+  --surface-2: #ede4d7;
+  --ink: #1f1c18;
+  --muted: #6d655b;
+  --line: #dccfbe;
+  --accent: #3355d1;
+  --accent-ink: #ffffff;
+  --good: #2b8a3e;
+  --bad: #d6336c;
+  --warn: #e8590c;
+  --edge: #8c8172;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #15171c;
+    --surface: #1d2027;
+    --surface-2: #262a33;
+    --ink: #eceae6;
+    --muted: #a19c94;
+    --line: #343946;
+    --accent: #7b96ff;
+    --accent-ink: #0e1220;
+    --good: #69db7c;
+    --bad: #ff6b9a;
+    --warn: #ffa94d;
+    --edge: #7d8698;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #15171c;
+  --surface: #1d2027;
+  --surface-2: #262a33;
+  --ink: #eceae6;
+  --muted: #a19c94;
+  --line: #343946;
+  --accent: #7b96ff;
+  --accent-ink: #0e1220;
+  --good: #69db7c;
+  --bad: #ff6b9a;
+  --warn: #ffa94d;
+  --edge: #7d8698;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A "hot" (overloaded) node pulses. */
+@keyframes hot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+.hot-glow {
+  animation: hot-pulse 1.2s ease-in-out infinite;
+}
+
+/* Respect people who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .flow-dot,
+  .hot-glow {
+    display: none;
+  }
+}
+
+/* React Flow follows our theme. */
+.react-flow {
+  --xy-background-color: var(--bg);
+  --xy-node-background-color: var(--surface);
+  --xy-node-border: 1px solid var(--line);
+  --xy-node-color: var(--ink);
+  --xy-edge-stroke: var(--edge);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-color: var(--ink);
+  --xy-controls-button-border-color: var(--line);
+  --xy-background-pattern-color: var(--line);
+  --xy-attribution-background-color: transparent;
+}
